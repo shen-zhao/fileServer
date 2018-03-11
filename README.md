@@ -2,7 +2,7 @@
 
 1.在fileServer目录下运行`npm install`
 
-2.修改/config/local.json
+2.修改`/config/local.json`
 
 ```
 {
@@ -18,3 +18,5 @@
     }
 }
 ```
+
+3.运行`node server.js`，在浏览器打开`localhost:3000`;
