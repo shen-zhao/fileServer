@@ -1,0 +1,135 @@
+var express = require('express');
+var path = require('path');
+var config = require('config');
+var fs = require('fs');
+var serveIndex = require('serve-index');
+var File = require('vinyl');
+var colors = require('colors');
+
+var app = express();
+
+function getExtname(filePath) {
+    return (new File({path: filePath})).extname;
+}
+
+function parseVm(req, res, next) {
+    var isVm = config.vm.indexOf(getExtname(req.path)) >= 0;
+    if(!isVm) {
+        return next();
+    }
+    
+    var vmPath = path.join(config.webapps, req.path);
+    compile(vmPath, function(err, ret) {
+        if(err) {
+            return next(err);
+        }
+        res.set('Content-Type', 'text/html; charset=utf-8');
+        res.send(ret);
+    });
+}
+
+function compile(vmPath, callback) {
+    var vmFile = new File({path: vmPath});
+    var contextFile = new File({path: vmPath});
+    contextFile.extname = '.js';
+
+    var template = getFileContent(vmPath);
+    if(null === template) {
+        var err = new Error('File not found:' + vmPath);
+        err.status = 404;
+        return callback(err);
+    }
+    vmFile.contents = new Buffer(template);
+    var context;
+    try {
+        delete require.cache[require.resolve(contextFile.path)];
+        context = require(contextFile.path);
+    } catch(err) {}
+
+    try {
+        var html = Velocity.render(template, context, getMacros(vmFile.path),{escape: false});
+        html = ssiInclude(html, vmFile.path);
+        callback(null, html);
+    } catch(err) {
+        return callback(err);
+    }
+}
+
+function getMacros(relativePath) {
+    var ssi = function(filePath) {
+        var newFilePath = path.resolve(path.dirname(relativePath), filePath);
+        var content = getFileContent(newFilePath);
+        if(null === content) {
+            return '<!-- ERROR: {{module}} not found -->'.replace('{{module}}', filePath);
+        }
+
+        return this.eval(content);
+    };
+
+    return {
+        include: ssi,
+        parse: ssi
+    };
+}
+
+function ssiInclude(content, relativePath) {
+    return content.replace(ssiInclude.reg, function(match, filePath) {
+        var newFilePath = path.resolve(path.dirname(relativePath), filePath);
+        var content = getFileContent(newFilePath);
+        if(content === null) {
+            return '<!-- ERROR: {{module}} not found -->'.replace('{{module}}', filePath);
+        } else {
+            return content;
+        }     
+    });
+}
+ssiInclude.reg = /<\!--\\?#include\s+(?:virtual|file)="([^"]*)"\s*-->/gm;
+
+function getFileContent(filePath) {
+    var content = null;
+    try {
+        content = fs.readFileSync(filePath, 'utf8');
+    } catch(e) {}
+    return content;
+}
+
+function myProxy(req, res, next) {
+    var proxy = httpProxy.createProxyServer();
+    req.url = req.originalUrl;
+    proxy.web(req, res, {
+        target: config.proxy.target,
+        changeOrigin: true
+    });
+    proxy.on('error', function(err) {
+        next('Unable to Connect to Proxy Server.' + err.message);
+    });
+    return proxy;
+}
+
+
+
+config.proxy && config.proxy.path && app.use(config.proxy.path, myProxy);
+
+app.set('views', config.webapps);
+
+app.use(function(req, res, next) {
+    res.set(config.responseHeaders);
+    next();
+});
+
+app.use(parseVm);
+
+app.use(serveIndex(config.webapps, {icons: true}));
+
+app.use(express.static(config.webapps, {index: false, maxAge: 0}));
+
+app.use(function errorHandler(err, req, res, next) {
+    res.status(err.status || 500).send(err.message);
+});
+
+app.listen(config.port, function(err) {
+    if (err) {
+        return console.error(colors.red(err.message));
+    }
+    console.log(colors.green('Server is running on port', config.port));
+});
