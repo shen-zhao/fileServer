@@ -8,16 +8,7 @@ var colors = require('colors');
 
 var app = express();
 
-function getExtname(filePath) {
-    return (new File({path: filePath})).extname;
-}
-
 function parseVm(req, res, next) {
-    var isVm = config.vm.indexOf(getExtname(req.path)) >= 0;
-    if(!isVm) {
-        return next();
-    }
-    
     var vmPath = path.join(config.webapps, req.path);
     compile(vmPath, function(err, ret) {
         if(err) {
