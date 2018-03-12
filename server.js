@@ -5,6 +5,7 @@ var fs = require('fs');
 var serveIndex = require('serve-index');
 var File = require('vinyl');
 var colors = require('colors');
+var JSON5 = require('json5');
 
 var app = express();
 
@@ -93,6 +94,27 @@ function getFileContent(filePath) {
     return content;
 }
 
+function json(req, res, next) {
+    var filePath = path.join(config.webapps, req.path);
+    var content = getFileContent(filePath);
+
+    if(null === content) {
+        next();
+    } else {
+        try {
+            content = JSON.stringify(JSON5.parse(content), null, 4);
+        } catch (err) {
+            return next(err);
+        }
+
+        res.set({
+            'Content-Type': 'application/json',
+            'maxAge': 0
+        });
+        res.send(content);
+    }
+};
+
 function myProxy(req, res, next) {
     var proxy = httpProxy.createProxyServer();
     req.url = req.originalUrl;
@@ -118,6 +140,8 @@ app.use(function(req, res, next) {
 });
 
 app.use(parseVm);
+
+app.all('*.json5?', json);
 
 app.use(serveIndex(config.webapps, {icons: true}));
 
