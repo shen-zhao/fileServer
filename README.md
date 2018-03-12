@@ -10,6 +10,7 @@
     "port":3000,
     // 服务器根目录，请填写绝对路径(在想启动服务的目录下运行pwd获取路径)
     "webapps": "F:/f2e",
+    "vm": [],
     // 响应头
     "responseHeaders": {
         "Cache-Control": "no-cache, no-store, must-revalidate",
